@@ -37,7 +37,11 @@ It prints two addresses:
 - **Controls** (top right, at the bottom on a phone): *View* switches between the face, both
   eyes and an eye close-up (the cameras of the Blender stills; the close-ups ride with the head
   like a head-mounted eye camera, and the eyes follow the mouse instead of the camera moving).
-  *Follow mouse* off stands the camera in front and the head simply keeps looking at you.
+  *Follow*: *Mouse* as above; *You (camera)* uses the laptop or phone camera to find your face
+  (MediaPipe face detection, in the browser; the video never leaves the device) and the head
+  looks at you: lean sideways or up to walk round it, lean in to come closer, leave the frame
+  to walk away. Where you sit when you pick it is the centre; pick it again to re-centre.
+  *Off* stands the camera in front and the head simply keeps looking at you.
 - **Quest, same Wi-Fi**: `https://<this Mac's address>:8443/xr/`. The certificate is
   self-signed (made with openssl on the first run, kept in `xr/.certs/`, git-ignored, valid
   30 days), so the Quest browser warns once: open *Advanced* and continue. Then tap
@@ -92,8 +96,10 @@ index.html            the page (an import map, no build step)
 js/app.js             scene, materials, light, plinth, XR session, laptop wearer, debug views
 js/rig.js             port of wrapper/rig.py: channels -> bone rotations and morph weights
 js/gaze.js            real-time gaze: (state, wearer, dt) -> channels; seeded, frame-rate free
+js/facefollow.js      Follow: You: the camera's face detection -> where the viewer's eyes are
 assets/head.glb       the head, skinned, 21 named shape keys; lash ribbons and tear lines
 assets/rig.json       eye centres, bone heads, rig constants, the gaze engine's numbers
+assets/face_detector.tflite  MediaPipe BlazeFace short range, for Follow: You (camera)
 assets/*.jpg, *.png   tex_09 at 2048 (skin albedo, normal) and 1024 (roughness, eyes)
 vendor/three/         three.js 0.185.1, MIT, unmodified, only the files used
 tests/                node --test (no browser): rig directions, the five scripted wearers
@@ -124,4 +130,6 @@ channels directly and freezes time; `?seed=N` picks the gaze seed.
   Perry-Smith", based on a work at www.triplegangers.com, licensed under
   [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/).
 - Rendering: [three.js](https://threejs.org) (MIT).
+- Face detection for *Follow: You*: [MediaPipe](https://ai.google.dev/edge/mediapipe) BlazeFace
+  short-range model and tasks-vision 1.1.1 (Apache-2.0); the runtime is loaded from jsDelivr.
 - Iris, rig, lid shapes, gaze model and this page: SyntheticEyes.

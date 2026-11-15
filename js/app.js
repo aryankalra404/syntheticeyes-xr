@@ -14,7 +14,7 @@
 //                          (head), blink (or blinkL / blinkR), brow (or browL / browR), widen,
 //                          squint, pupil
 //   seed=0                 the gaze's seed (default 0)
-//   follow=0               start with the mouse not followed (the controls can turn it on)
+//   follow=off             start with nothing followed (the controls change it)
 //   yaw, pitch, dist       laptop wearer's start: deg round the head, deg up, metres
 //
 // Without a headset the camera is the wearer: the mouse moves it on an arc round the head
@@ -27,6 +27,7 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { XRButton } from 'three/addons/webxr/XRButton.js';
 import { Rig, bonesLocal } from './rig.js';
 import { createGaze, step as gazeStep } from './gaze.js';
+import { createFaceFollow } from './facefollow.js';
 
 const Q = new URLSearchParams(location.search);
 const num = (k, d) => (Q.has(k) ? parseFloat(Q.get(k)) : d);
@@ -317,10 +318,10 @@ const VIEWS = {
 let FIXED_VIEW = VIEWS[Q.get('view')] || null;
 
 // Controls for whoever opens the page: the view (the walk-round face, both eyes, one eye close
-// up) and whether the mouse is followed. In the close-ups the camera stays put and the mouse
-// moves where the eyes look instead; with following off the camera stands in front and the
-// head simply keeps looking at you.
-const ui = { follow: Q.get('follow') !== '0' };
+// up) and what is followed: the mouse, you (the camera finds your face), or nothing. In the
+// close-ups the camera stays put and the mouse or your face moves where the eyes look instead;
+// with following off the camera stands in front and the head simply keeps looking at you.
+const ui = { mode: Q.get('follow') === '0' || Q.get('follow') === 'off' ? 'off' : 'mouse', camMsg: '' };
 
 // The laptop wearer: where the mouse puts the camera (goal) and where it is (smoothed, so the
 // camera moves like a person stepping, not a cursor).
@@ -358,7 +359,7 @@ function placeOrbitCamera() {
 }
 
 function pointerToOrbit(x, y) {
-  if (!ui.follow) return;
+  if (ui.mode !== 'mouse') return;
   const r = renderer.domElement.getBoundingClientRect();
   const u = THREE.MathUtils.clamp((x - r.left) / r.width, 0, 1);
   const v = THREE.MathUtils.clamp((y - r.top) / r.height, 0, 1);
@@ -371,7 +372,11 @@ function setupLaptopInput() {
   let pinch = null;
   const touches = new Map();
   el.addEventListener('pointermove', (e) => {
-    if (e.pointerType === 'mouse') { orbit.present = true; pointerToOrbit(e.clientX, e.clientY); return; }
+    if (e.pointerType === 'mouse') {
+      if (ui.mode === 'mouse') orbit.present = true;
+      pointerToOrbit(e.clientX, e.clientY);
+      return;
+    }
     if (!touches.has(e.pointerId)) return;
     touches.set(e.pointerId, [e.clientX, e.clientY]);
     if (touches.size === 1) pointerToOrbit(e.clientX, e.clientY);
@@ -398,8 +403,8 @@ function setupLaptopInput() {
     orbit.goal.dist = THREE.MathUtils.clamp(orbit.goal.dist * Math.exp(e.deltaY * 0.0012), LIMITS.near, LIMITS.far);
   }, { passive: false });
   // taking the mouse off the page is walking away; coming back is being seen again
-  document.documentElement.addEventListener('mouseleave', () => { if (ui.follow) orbit.present = false; });
-  document.documentElement.addEventListener('mouseenter', () => { orbit.present = true; });
+  document.documentElement.addEventListener('mouseleave', () => { if (ui.mode === 'mouse') orbit.present = false; });
+  document.documentElement.addEventListener('mouseenter', () => { if (ui.mode === 'mouse') orbit.present = true; });
 }
 
 function smoothOrbit(dt) {
@@ -407,14 +412,67 @@ function smoothOrbit(dt) {
   for (const k of ['yaw', 'pitch', 'dist']) orbit.now[k] += (orbit.goal[k] - orbit.now[k]) * a;
 }
 
-function setFollow(on) {
-  ui.follow = on;
-  if (!on) {                                   // stand in front again and stay seen
-    orbit.goal.yaw = 0; orbit.goal.pitch = 0;
-    orbit.present = true;
+// Follow you: where the camera sees your eyes becomes where the wearer stands. The first sighting
+// is the centre (picking "You" again re-centres); leaning sideways or up turns the view round
+// the head (x2.5, so a 10 cm lean at laptop distance is about 25 deg), leaning in brings it
+// closer. No face for a second is walking away: the head loses you, looks round and greets you
+// when you are back.
+const face = { follow: null, neutral: null, dist0: 0.7, seen: false };
+const FACE_GAIN = 2.5;
+
+function faceToOrbit() {
+  const p = face.follow && face.follow.position();
+  if (!p) {
+    if (face.seen) orbit.present = false;
+    return;
   }
-  const b = document.getElementById('follow');
-  if (b) { b.setAttribute('aria-pressed', String(on)); b.querySelector('i').textContent = on ? 'on' : 'off'; }
+  if (!face.neutral) face.neutral = p.slice();
+  face.seen = true;
+  orbit.present = true;
+  const [x0, y0, z0] = face.neutral, [x, y, z] = p;
+  const R2D = 180 / Math.PI, clamp = THREE.MathUtils.clamp;
+  orbit.goal.yaw = clamp(Math.atan2(x - x0, z) * R2D * FACE_GAIN, -LIMITS.yaw, LIMITS.yaw);
+  orbit.goal.pitch = clamp(Math.atan2(y - y0, z) * R2D * FACE_GAIN, -LIMITS.pitch, LIMITS.pitch);
+  orbit.goal.dist = clamp(face.dist0 * z / z0, LIMITS.near, LIMITS.far);
+}
+
+async function setFollowMode(mode) {
+  const was = ui.mode;
+  ui.mode = mode;
+  if (mode !== 'mouse') { orbit.goal.yaw = 0; orbit.goal.pitch = 0; }
+  orbit.present = true;
+  if (mode === 'you') {
+    face.neutral = null;                         // (re-)centre on the next sighting
+    face.seen = false;
+    if (was !== 'you') face.dist0 = orbit.goal.dist;
+    const video = document.getElementById('cam');
+    if (!face.follow) {
+      face.follow = createFaceFollow({ video, onStatus: (t) => { ui.camMsg = t; noteText(); } });
+    }
+    if (video) video.hidden = false;
+    marks();
+    const ok = await face.follow.start();
+    if (!ok && ui.mode === 'you') {              // no camera: back to the mouse, keep the reason
+      const msg = ui.camMsg;
+      if (video) video.hidden = true;
+      await setFollowMode('mouse');
+      ui.camMsg = msg;
+      const n = document.getElementById('follow-note');
+      if (n && msg) { n.textContent = msg; n.classList.add('show'); }
+    }
+    return;
+  }
+  if (face.follow && face.follow.on) face.follow.stop();
+  const video = document.getElementById('cam');
+  if (video) video.hidden = true;
+  if (was === 'you') orbit.goal.dist = face.dist0;
+  marks();
+}
+
+function marks() {
+  for (const b of document.querySelectorAll('#controls [data-follow]')) {
+    b.setAttribute('aria-pressed', String(b.dataset.follow === ui.mode));
+  }
   noteText();
 }
 
@@ -430,7 +488,9 @@ function setViewName(name) {
 function noteText() {
   const n = document.getElementById('follow-note');
   if (!n) return;
-  n.textContent = !ui.follow ? 'The head keeps looking at you.'
+  n.classList.toggle('show', ui.mode === 'you');
+  n.textContent = ui.mode === 'off' ? 'The head keeps looking at you.'
+    : ui.mode === 'you' ? `${ui.camMsg || 'Starting the camera…'} Move your head; the video stays on this device.`
     : FIXED_VIEW ? 'The eyes follow the mouse.'
     : 'Move the mouse to walk round the head, scroll to come closer.';
 }
@@ -439,17 +499,18 @@ function setupControls() {
   for (const b of document.querySelectorAll('#controls [data-view]')) {
     b.addEventListener('click', () => setViewName(b.dataset.view));
   }
-  const follow = document.getElementById('follow');
-  if (follow) follow.addEventListener('click', () => setFollow(!ui.follow));
+  for (const b of document.querySelectorAll('#controls [data-follow]')) {
+    b.addEventListener('click', () => setFollowMode(b.dataset.follow));
+  }
   setViewName(Q.get('view') || '');
-  setFollow(ui.follow);
+  setFollowMode(ui.mode);
 }
 
 // Where the eyes look in a close-up: the camera, moved by the mouse up to about 35 deg
 // sideways and 20 deg up or down, so the eye follows the pointer while the frame stays still.
 const _r = new THREE.Vector3(), _u = new THREE.Vector3(), _v = new THREE.Vector3();
 function steerViewer(viewer) {
-  if (!ui.follow) return viewer;
+  if (ui.mode === 'off') return viewer;
   const mid = H.rig.eye_mid;
   _v.fromArray(viewer.pos).sub(_u.fromArray(mid));
   const d = _v.length();
@@ -575,6 +636,7 @@ function frame(time) {
       }
       if (!xrState.place) viewer = viewerFrom(xrCam);
     } else {
+      if (ui.mode === 'you') faceToOrbit();
       smoothOrbit(dt);
       if (FIXED_VIEW) setView(); else placeOrbitCamera();
       camera.updateMatrixWorld(true);
@@ -611,7 +673,7 @@ async function main() {
   if (!POSE && !Q.has('noxr')) setupXR();
   status('');
   renderer.setAnimationLoop(frame);
-  window.__xr = { THREE, scene, camera, renderer, bust, H, applyChannels, orbit, placeBust, viewerFrom, ui, setViewName, setFollow };
+  window.__xr = { THREE, scene, camera, renderer, bust, H, applyChannels, orbit, placeBust, viewerFrom, ui, setViewName, setFollowMode, face };
   document.body.dataset.ready = '1';
 }
 

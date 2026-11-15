@@ -28,9 +28,8 @@
   #controls button:hover { background: rgba(255, 255, 255, 0.06); }
   #controls button[aria-pressed="true"] { background: rgba(255, 255, 255, 0.12);
                                           border-color: #3a3a42; color: #f2f2f4; }
-  #controls .switch { display: flex; justify-content: space-between; align-items: center; }
-  #controls .switch i { font-style: normal; font-size: 11px; color: #8a8a90; }
-  #controls .switch[aria-pressed="true"] i { color: #9fd5a8; }
+  #cam { width: 100%; border-radius: 6px; transform: scaleX(-1); margin-top: 4px;
+         background: #000; }
   #controls .note { font-size: 11px; color: #75757c; margin: 2px 2px 0; line-height: 1.35; }
   #headset { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%);
              padding: 10px 16px; border: 1px solid #3a3a42; border-radius: 6px;
@@ -43,6 +42,8 @@
                 align-items: flex-start; }
     #controls .group { flex: 1; }
     #controls .note { display: none; }
+    #controls .note.show { display: block; }
+    #cam { max-height: 64px; object-fit: cover; }
     #headset { bottom: 16px; font-size: 11px; }
   }
   body.shot #title, body.shot #controls, body.shot #headset,
@@ -69,9 +70,13 @@
     <button data-view="eyes" aria-pressed="false">Both eyes</button>
     <button data-view="eye" aria-pressed="false">Eye close-up</button>
   </div>
-  <div class="group">
-    <button id="follow" class="switch" aria-pressed="true">Follow mouse <i>on</i></button>
-    <div class="note" id="follow-note">Move the mouse to walk round the head, scroll to come closer.</div>
+  <div class="group" role="group" aria-label="Follow">
+    <div class="label">Follow</div>
+    <button data-follow="mouse" aria-pressed="true">Mouse</button>
+    <button data-follow="you" aria-pressed="false">You (camera)</button>
+    <button data-follow="off" aria-pressed="false">Off</button>
+    <video id="cam" playsinline muted hidden></video>
+    <div class="note" id="follow-note"></div>
   </div>
 </div>
 <div id="headset" hidden>Open this link in a VR headset to see it in your room</div>
