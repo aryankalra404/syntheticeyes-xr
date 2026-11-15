@@ -416,28 +416,34 @@ function smoothOrbit(dt) {
   for (const k of ['yaw', 'pitch', 'dist']) orbit.now[k] += (orbit.goal[k] - orbit.now[k]) * a;
 }
 
-// Follow you: where the camera sees your eyes becomes where the wearer stands. The first sighting
-// is the centre (picking "You" again re-centres); leaning sideways or up turns the view round
-// the head (x2.5, so a 10 cm lean at laptop distance is about 25 deg), leaning in brings it
-// closer. No face for a second is walking away: the head loses you, looks round and greets you
-// when you are back.
-const face = { follow: null, neutral: null, dist0: 0.7, seen: false };
-const FACE_GAIN = 2.5;
+// Follow you: the camera stays where the view puts it, like a window, and the head looks at
+// where you really are in front of the screen. Sideways is measured from the laptop camera
+// (assumed centred above the screen), so stepping to the left makes it turn to your left
+// wherever you started; up and down from where you sat when it first saw you (the camera is
+// above the screen, so its own height is not eye level with the face on it). A face on a flat screen that looks straight out seems to look
+// at everyone, so the turn is shown larger than the real angle (x1.8: 10 deg off-centre turns
+// it 18). Leaning in brings its focus closer (vergence, pupils). No face for a second is walking
+// away: it loses you, looks round, and greets you when you are back.
+const face = { follow: null, z0: null, y0: 0, seen: false,
+               goal: { yaw: 0, pitch: 0, scale: 1 }, now: { yaw: 0, pitch: 0, scale: 1 } };
+const FACE_GAIN = num('facegain', 1.8);
+const FACE_MAX = { yaw: 40, pitch: 25 };
 
-function faceToOrbit() {
+function faceUpdate(dt) {
   const p = face.follow && face.follow.position();
   if (!p) {
     if (face.seen) orbit.present = false;
-    return;
+  } else {
+    const [x, y, z] = p, R2D = 180 / Math.PI, clamp = THREE.MathUtils.clamp;
+    if (face.z0 === null) { face.z0 = z; face.y0 = y; }
+    face.seen = true;
+    orbit.present = true;
+    face.goal.yaw = clamp(Math.atan2(x, z) * R2D * FACE_GAIN, -FACE_MAX.yaw, FACE_MAX.yaw);
+    face.goal.pitch = clamp(Math.atan2(y - face.y0, z) * R2D * FACE_GAIN, -FACE_MAX.pitch, FACE_MAX.pitch);
+    face.goal.scale = clamp(z / face.z0, 0.5, 2);
   }
-  if (!face.neutral) face.neutral = p.slice();
-  face.seen = true;
-  orbit.present = true;
-  const [x0, y0, z0] = face.neutral, [x, y, z] = p;
-  const R2D = 180 / Math.PI, clamp = THREE.MathUtils.clamp;
-  orbit.goal.yaw = clamp(Math.atan2(x - x0, z) * R2D * FACE_GAIN, -LIMITS.yaw, LIMITS.yaw);
-  orbit.goal.pitch = clamp(Math.atan2(y - y0, z) * R2D * FACE_GAIN, -LIMITS.pitch, LIMITS.pitch);
-  orbit.goal.dist = clamp(face.dist0 * z / z0, LIMITS.near, LIMITS.far);
+  const a = 1 - Math.exp(-dt / ORBIT_TAU);
+  for (const k of ['yaw', 'pitch', 'scale']) face.now[k] += (face.goal[k] - face.now[k]) * a;
 }
 
 async function setFollowMode(mode) {
@@ -446,9 +452,10 @@ async function setFollowMode(mode) {
   if (mode !== 'mouse') { orbit.goal.yaw = 0; orbit.goal.pitch = 0; }
   orbit.present = true;
   if (mode === 'you') {
-    face.neutral = null;                         // (re-)centre on the next sighting
+    face.z0 = null;                              // distance and height reference: the next sighting
     face.seen = false;
-    if (was !== 'you') face.dist0 = orbit.goal.dist;
+    face.goal = { yaw: 0, pitch: 0, scale: 1 };
+    face.now = { yaw: 0, pitch: 0, scale: 1 };
     const video = document.getElementById('cam');
     if (!face.follow) {
       face.follow = createFaceFollow({ video, onStatus: (t) => { ui.camMsg = t; noteText(); } });
@@ -469,7 +476,6 @@ async function setFollowMode(mode) {
   if (face.follow && face.follow.on) face.follow.stop();
   const video = document.getElementById('cam');
   if (video) video.hidden = true;
-  if (was === 'you') orbit.goal.dist = face.dist0;
   marks();
 }
 
@@ -494,7 +500,7 @@ function noteText() {
   if (!n) return;
   n.classList.toggle('show', ui.mode === 'you');
   n.textContent = ui.mode === 'off' ? 'The head keeps looking at you.'
-    : ui.mode === 'you' ? `${ui.camMsg || 'Starting the camera…'} Move your head; the video stays on this device.`
+    : ui.mode === 'you' ? `${ui.camMsg || 'Starting the camera…'} It looks at you wherever you are; the video stays on this device.`
     : FIXED_VIEW ? 'The eyes follow the mouse.'
     : 'Move the mouse to walk round the head, scroll to come closer.';
 }
@@ -510,20 +516,18 @@ function setupControls() {
   setFollowMode(ui.mode);
 }
 
-// Where the eyes look in a close-up: the camera, moved by the mouse up to about 35 deg
-// sideways and 20 deg up or down, so the eye follows the pointer while the frame stays still.
-const _r = new THREE.Vector3(), _u = new THREE.Vector3(), _v = new THREE.Vector3();
-function steerViewer(viewer) {
-  if (ui.mode === 'off') return viewer;
-  const mid = H.rig.eye_mid;
-  _v.fromArray(viewer.pos).sub(_u.fromArray(mid));
+// Where the eyes look: the camera, turned `yaw` / `pitch` degrees round the eyes (positive:
+// image-right, up) and its distance scaled. The mouse uses it in the close-ups (up to 35 deg
+// sideways, 20 up or down) and Follow you in every view.
+const _r = new THREE.Vector3(), _u = new THREE.Vector3(), _v = new THREE.Vector3(), _m = new THREE.Vector3();
+function steerViewer(viewer, yaw, pitch, scale = 1) {
+  _m.fromArray(H.rig.eye_mid);
+  _v.fromArray(viewer.pos).sub(_m).multiplyScalar(scale);
   const d = _v.length();
-  const tx = Math.tan(orbit.now.yaw / LIMITS.yaw * 35 * D2R) * d;
-  const ty = Math.tan(orbit.now.pitch / LIMITS.pitch * 20 * D2R) * d;
-  _r.fromArray(viewer.right).multiplyScalar(tx);
-  _u.fromArray(viewer.up).multiplyScalar(ty);
-  _v.fromArray(viewer.pos).add(_r).add(_u);
-  viewer.pos = _v.toArray();
+  _v.add(_m);
+  _r.fromArray(viewer.right).multiplyScalar(Math.tan(yaw * D2R) * d);
+  _u.fromArray(viewer.up).multiplyScalar(Math.tan(pitch * D2R) * d);
+  viewer.pos = _v.add(_r).add(_u).toArray();
   return viewer;
 }
 
@@ -647,12 +651,15 @@ function frame(time) {
       }
       if (!xrState.place) viewer = viewerFrom(xrCam);
     } else {
-      if (ui.mode === 'you') faceToOrbit();
+      if (ui.mode === 'you') faceUpdate(dt);
       smoothOrbit(dt);
       if (FIXED_VIEW) setView(); else placeOrbitCamera();
       camera.updateMatrixWorld(true);
       viewer = orbit.present ? viewerFrom(camera) : null;
-      if (viewer && FIXED_VIEW) steerViewer(viewer);
+      if (viewer && ui.mode === 'you') steerViewer(viewer, face.now.yaw, face.now.pitch, face.now.scale);
+      else if (viewer && FIXED_VIEW && ui.mode === 'mouse') {
+        steerViewer(viewer, orbit.now.yaw / LIMITS.yaw * 35, orbit.now.pitch / LIMITS.pitch * 20);
+      }
     }
     if (PROF) p1 = pt();
     H.channels = gazeStep(H.gaze, viewer, dt);

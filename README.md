@@ -38,9 +38,13 @@ It prints two addresses:
   eyes and an eye close-up (the cameras of the Blender stills; the close-ups ride with the head
   like a head-mounted eye camera, and the eyes follow the mouse instead of the camera moving).
   *Follow*: *Mouse* as above; *You (camera)* uses the laptop or phone camera to find your face
-  (MediaPipe face detection, in the browser; the video never leaves the device) and the head
-  looks at you: lean sideways or up to walk round it, lean in to come closer, leave the frame
-  to walk away. Where you sit when you pick it is the centre; pick it again to re-centre.
+  (MediaPipe face detection, in the browser; the video never leaves the device). The camera
+  then stays put, like a window, and the head looks at where you really are: step to the side
+  and it turns to you, rise or sink and it looks up or down at you, lean in and its focus comes
+  closer, leave the frame and it loses you and greets you when you are back. Sideways is
+  measured from the camera's centre; level is where you sat when it first saw you (pick it
+  again to reset). The turn is shown at 1.8x the real angle (`?facegain=`), because a face on a
+  flat screen that looks straight out seems to look at everyone.
   *Off* stands the camera in front and the head simply keeps looking at you.
 - **Quest, same Wi-Fi**: `https://<this Mac's address>:8443/xr/`. The certificate is
   self-signed (made with openssl on the first run, kept in `xr/.certs/`, git-ignored, valid
