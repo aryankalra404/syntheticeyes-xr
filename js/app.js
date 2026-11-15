@@ -408,8 +408,11 @@ function setupLaptopInput() {
   document.documentElement.addEventListener('mouseenter', () => { if (ui.mode === 'mouse') orbit.present = true; });
 }
 
+// 0.1 s: the camera reaches 90 % of a mouse move in about 0.23 s (it was 0.25 s, 0.57 s to 90 %,
+// which read as lag). The head's own delay behind the eyes is the gaze model's, not this.
+const ORBIT_TAU = num('ease', 0.1);
 function smoothOrbit(dt) {
-  const a = 1 - Math.exp(-dt / 0.25);
+  const a = 1 - Math.exp(-dt / ORBIT_TAU);
   for (const k of ['yaw', 'pitch', 'dist']) orbit.now[k] += (orbit.goal[k] - orbit.now[k]) * a;
 }
 
