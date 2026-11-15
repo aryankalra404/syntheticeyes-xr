@@ -15,6 +15,7 @@
 //                          squint, pupil
 //   seed=0                 the gaze's seed (default 0)
 //   follow=off             start with nothing followed (the controls change it)
+//   prof=1                 time each frame's gaze, rig and render (gl.finish) into window.__prof
 //   yaw, pitch, dist       laptop wearer's start: deg round the head, deg up, metres
 //
 // Without a headset the camera is the wearer: the mouse moves it on an arc round the head
@@ -121,7 +122,7 @@ async function loadAll() {
     new GLTFLoader().loadAsync(ASSETS + 'head.glb'),
     fetch(ASSETS + 'rig.json').then((r) => r.json()),
     loadTexture('skin_albedo.jpg', true),
-    loadTexture('skin_normal.png', false),
+    loadTexture('skin_normal.webp', false),
     loadTexture('skin_rough.jpg', false),
     loadTexture('eye_L.jpg', true),
     loadTexture('eye_R.jpg', true),
@@ -618,7 +619,14 @@ function viewerFrom(cam) {
 const POSE = Q.get('pose') === '1';
 const timer = { last: null };
 
+// ?prof=1: time the parts of each frame (gaze, rig, render; with gl.finish so the render time
+// includes the GPU) into window.__prof, for finding stutter without a visible window.
+const PROF = Q.get('prof') === '1' ? (window.__prof = { gaze: [], rig: [], render: [], all: [] }) : null;
+const pt = () => performance.now();
+
 function frame(time) {
+  const p0 = PROF ? pt() : 0;
+  let p1 = p0, p2 = p0;
   const now = time / 1000;
   const dt = timer.last === null ? 1 / 60 : Math.min(Math.max(now - timer.last, 0), 0.1);
   timer.last = now;
@@ -643,7 +651,9 @@ function frame(time) {
       viewer = orbit.present ? viewerFrom(camera) : null;
       if (viewer && FIXED_VIEW) steerViewer(viewer);
     }
+    if (PROF) p1 = pt();
     H.channels = gazeStep(H.gaze, viewer, dt);
+    if (PROF) p2 = pt();
     if (FIXED_VIEW && !renderer.xr.isPresenting) {
       // close-ups: the head takes a third of its usual share and the eyes, still aimed at the
       // same point, make up the rest, so the motion shows where the camera is looking
@@ -655,12 +665,19 @@ function frame(time) {
       applyChannels(H.channels);
     }
   }
+  const p3 = PROF ? pt() : 0;
   renderer.render(scene, camera);
+  if (PROF) {
+    renderer.getContext().finish();
+    const p4 = pt();
+    PROF.gaze.push(p2 - p1); PROF.rig.push(p3 - p2); PROF.render.push(p4 - p3); PROF.all.push(p4 - p0);
+  }
 }
 
 async function main() {
+  let assets;
   try {
-    const assets = await loadAll();
+    assets = await loadAll();
     buildBust(assets);
   } catch (e) {
     status('could not load the head: ' + e.message);
@@ -671,6 +688,14 @@ async function main() {
   setupLaptopInput();
   setupControls();
   if (!POSE && !Q.has('noxr')) setupXR();
+  // Warm up before the first visible frame: upload the textures and compile every shader (off
+  // the main thread where the browser can), so the page does not freeze for a second on its
+  // first frame. Same shaders, same textures: nothing about the look changes.
+  status('preparing…');
+  const w0 = performance.now();
+  for (const t of Object.values(assets.tex)) renderer.initTexture(t);
+  try { await renderer.compileAsync(scene, camera); } catch { /* the first frame compiles instead */ }
+  H.warmup = performance.now() - w0;
   status('');
   renderer.setAnimationLoop(frame);
   window.__xr = { THREE, scene, camera, renderer, bust, H, applyChannels, orbit, placeBust, viewerFrom, ui, setViewName, setFollowMode, face };

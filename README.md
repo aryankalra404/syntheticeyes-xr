@@ -100,7 +100,7 @@ js/facefollow.js      Follow: You: the camera's face detection -> where the view
 assets/head.glb       the head, skinned, 21 named shape keys; lash ribbons and tear lines
 assets/rig.json       eye centres, bone heads, rig constants, the gaze engine's numbers
 assets/face_detector.tflite  MediaPipe BlazeFace short range, for Follow: You (camera)
-assets/*.jpg, *.png   tex_09 at 2048 (skin albedo, normal) and 1024 (roughness, eyes)
+assets/*.jpg, *.webp  tex_09 at 2048 (skin albedo; normal as lossless WebP) and 1024 (roughness, eyes)
 vendor/three/         three.js 0.185.1, MIT, unmodified, only the files used
 tests/                node --test (no browser): rig directions, the five scripted wearers
 serve.py              local HTTP / HTTPS server for the laptop and the headset
