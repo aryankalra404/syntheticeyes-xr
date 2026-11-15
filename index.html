@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>SyntheticEyes bust</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0d0d0f; color: #b9b9be;
+               font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; overflow: hidden; }
+  #stage { position: fixed; inset: 0; touch-action: none; }
+  #stage.fixed { inset: auto; left: 50%; top: 50%; transform: translate(-50%, -50%); }
+  #hint { position: fixed; left: 16px; top: 14px; max-width: 30em; pointer-events: none; }
+  #hint b { color: #e4e4e8; font-weight: 600; }
+  #credits { position: fixed; left: 16px; right: 16px; bottom: 10px; font-size: 11px;
+             color: #7d7d84; pointer-events: auto; }
+  #credits a { color: inherit; }
+  #status { position: fixed; right: 16px; top: 14px; font-size: 12px; color: #8a8a90; }
+  body.shot #hint, body.shot #credits, body.shot #status, body.shot #XRButton,
+  body.shot button { display: none !important; }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "./vendor/three/build/three.module.min.js",
+    "three/addons/": "./vendor/three/addons/"
+  }
+}
+</script>
+</head>
+<body>
+<div id="stage"></div>
+<div id="hint"><b>SyntheticEyes</b>: a synthetic head that looks at you.
+  Move the mouse to walk round it, scroll to come closer, take the mouse off the page to walk
+  away. In a headset tap <b>START XR</b>; the trigger or a pinch places the bust again.</div>
+<div id="status">loading…</div>
+<div id="credits">
+  Head: Google GNM Head v3 (Apache-2.0). Skin colour and micro-relief from
+  “Infinite, 3D Head Scan by Lee Perry-Smith”, based on a work at www.triplegangers.com
+  (<a href="https://creativecommons.org/licenses/by/3.0/" target="_blank" rel="noopener">CC BY 3.0</a>).
+  Rendering: three.js (MIT). Iris, rig and motion: SyntheticEyes.
+</div>
+<script type="module" src="./js/app.js"></script>
+</body>
+</html>
