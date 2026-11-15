@@ -14,6 +14,7 @@
 //                          (head), blink (or blinkL / blinkR), brow (or browL / browR), widen,
 //                          squint, pupil
 //   seed=0                 the gaze's seed (default 0)
+//   follow=0               start with the mouse not followed (the controls can turn it on)
 //   yaw, pitch, dist       laptop wearer's start: deg round the head, deg up, metres
 //
 // Without a headset the camera is the wearer: the mouse moves it on an arc round the head
@@ -273,6 +274,8 @@ function setupRig(rigJson) {
   H.restWorld.root = asArr(rootInv.clone().multiply(H.bones.neck.parent.getWorldQuaternion(q)));
   H.morph = H.meshes.map((m) => ({ m, d: m.morphTargetDictionary }));
   applyChannels({});
+  H.bones.head.updateWorldMatrix(true, false);
+  H.headRestInv = H.bones.head.matrixWorld.clone().invert();
 }
 
 /** Pose the bust from channels (rig.js apply()); returns the rig state. */
@@ -311,7 +314,13 @@ const VIEWS = {
   eye: { pos: [-0.0305, 0.3197, 0.2466], dir: [0.405, -0.105, -0.909], lens: 100 }, // cam_test_eye
   video: { pos: [-0.0001, 0.2642, 0.6676], dir: [0, 0, -1], lens: 112 },  // cam_video
 };
-const FIXED_VIEW = VIEWS[Q.get('view')];
+let FIXED_VIEW = VIEWS[Q.get('view')] || null;
+
+// Controls for whoever opens the page: the view (the walk-round face, both eyes, one eye close
+// up) and whether the mouse is followed. In the close-ups the camera stays put and the mouse
+// moves where the eyes look instead; with following off the camera stands in front and the
+// head simply keeps looking at you.
+const ui = { follow: Q.get('follow') !== '0' };
 
 // The laptop wearer: where the mouse puts the camera (goal) and where it is (smoothed, so the
 // camera moves like a person stepping, not a cursor).
@@ -349,6 +358,7 @@ function placeOrbitCamera() {
 }
 
 function pointerToOrbit(x, y) {
+  if (!ui.follow) return;
   const r = renderer.domElement.getBoundingClientRect();
   const u = THREE.MathUtils.clamp((x - r.left) / r.width, 0, 1);
   const v = THREE.MathUtils.clamp((y - r.top) / r.height, 0, 1);
@@ -388,7 +398,7 @@ function setupLaptopInput() {
     orbit.goal.dist = THREE.MathUtils.clamp(orbit.goal.dist * Math.exp(e.deltaY * 0.0012), LIMITS.near, LIMITS.far);
   }, { passive: false });
   // taking the mouse off the page is walking away; coming back is being seen again
-  document.documentElement.addEventListener('mouseleave', () => { orbit.present = false; });
+  document.documentElement.addEventListener('mouseleave', () => { if (ui.follow) orbit.present = false; });
   document.documentElement.addEventListener('mouseenter', () => { orbit.present = true; });
 }
 
@@ -397,20 +407,98 @@ function smoothOrbit(dt) {
   for (const k of ['yaw', 'pitch', 'dist']) orbit.now[k] += (orbit.goal[k] - orbit.now[k]) * a;
 }
 
+function setFollow(on) {
+  ui.follow = on;
+  if (!on) {                                   // stand in front again and stay seen
+    orbit.goal.yaw = 0; orbit.goal.pitch = 0;
+    orbit.present = true;
+  }
+  const b = document.getElementById('follow');
+  if (b) { b.setAttribute('aria-pressed', String(on)); b.querySelector('i').textContent = on ? 'on' : 'off'; }
+  noteText();
+}
+
+function setViewName(name) {
+  FIXED_VIEW = VIEWS[name] || null;
+  for (const b of document.querySelectorAll('#controls [data-view]')) {
+    b.setAttribute('aria-pressed', String(b.dataset.view === (FIXED_VIEW ? name : '')));
+  }
+  setView();
+  noteText();
+}
+
+function noteText() {
+  const n = document.getElementById('follow-note');
+  if (!n) return;
+  n.textContent = !ui.follow ? 'The head keeps looking at you.'
+    : FIXED_VIEW ? 'The eyes follow the mouse.'
+    : 'Move the mouse to walk round the head, scroll to come closer.';
+}
+
+function setupControls() {
+  for (const b of document.querySelectorAll('#controls [data-view]')) {
+    b.addEventListener('click', () => setViewName(b.dataset.view));
+  }
+  const follow = document.getElementById('follow');
+  if (follow) follow.addEventListener('click', () => setFollow(!ui.follow));
+  setViewName(Q.get('view') || '');
+  setFollow(ui.follow);
+}
+
+// Where the eyes look in a close-up: the camera, moved by the mouse up to about 35 deg
+// sideways and 20 deg up or down, so the eye follows the pointer while the frame stays still.
+const _r = new THREE.Vector3(), _u = new THREE.Vector3(), _v = new THREE.Vector3();
+function steerViewer(viewer) {
+  if (!ui.follow) return viewer;
+  const mid = H.rig.eye_mid;
+  _v.fromArray(viewer.pos).sub(_u.fromArray(mid));
+  const d = _v.length();
+  const tx = Math.tan(orbit.now.yaw / LIMITS.yaw * 35 * D2R) * d;
+  const ty = Math.tan(orbit.now.pitch / LIMITS.pitch * 20 * D2R) * d;
+  _r.fromArray(viewer.right).multiplyScalar(tx);
+  _u.fromArray(viewer.up).multiplyScalar(ty);
+  _v.fromArray(viewer.pos).add(_r).add(_u);
+  viewer.pos = _v.toArray();
+  return viewer;
+}
+
+// The close-up cameras ride with the head, like a head-mounted eye camera, so a head turn does
+// not push the eye out of frame. The gaze target above is taken from the camera before it moves,
+// so the eyes keep looking where the viewer is and only they move in the frame.
+const CLOSEUP_HEAD = num('closeuphead', 0.35);
+const _hw = new THREE.Matrix4(), _cm = new THREE.Matrix4();
+function rideWithHead() {
+  const head = H.bones && H.bones.head;
+  if (!head || !H.headRestInv) return;
+  head.updateWorldMatrix(true, false);
+  _hw.multiplyMatrices(head.matrixWorld, H.headRestInv);      // head now, relative to rest
+  _cm.multiplyMatrices(_hw, camera.matrixWorld);
+  _cm.decompose(camera.position, camera.quaternion, camera.scale);
+  camera.updateMatrixWorld(true);
+}
+
 // ---- XR ------------------------------------------------------------------------------------
 
 const xrState = { place: false, ar: false, frames: 0 };
 
-function setupXR() {
+async function xrSupported() {
+  if (!navigator.xr || !window.isSecureContext) return false;
+  for (const mode of ['immersive-ar', 'immersive-vr']) {
+    try { if (await navigator.xr.isSessionSupported(mode)) return true; } catch { /* next */ }
+  }
+  return false;
+}
+
+async function setupXR() {
+  // Without a headset, say where to open the page instead of three.js's "XR NOT SUPPORTED".
+  if (!(await xrSupported())) {
+    const hint = document.getElementById('headset');
+    if (hint) hint.hidden = false;
+    return;
+  }
   const button = XRButton.createButton(renderer, { requiredFeatures: ['local-floor'],
                                                    optionalFeatures: ['hand-tracking'] });
   document.body.appendChild(button);
-  const lift = () => {                                   // sit above the credits line
-    const c = document.getElementById('credits');
-    button.style.bottom = `${(c ? c.offsetHeight : 0) + 22}px`;
-  };
-  lift();
-  window.addEventListener('resize', lift);
   renderer.xr.addEventListener('sessionstart', () => {
     const session = renderer.xr.getSession();
     // passthrough when the session blends with the room; a dark room otherwise (immersive-vr)
@@ -487,12 +575,23 @@ function frame(time) {
       }
       if (!xrState.place) viewer = viewerFrom(xrCam);
     } else {
-      if (!FIXED_VIEW) { smoothOrbit(dt); placeOrbitCamera(); }
+      smoothOrbit(dt);
+      if (FIXED_VIEW) setView(); else placeOrbitCamera();
       camera.updateMatrixWorld(true);
       viewer = orbit.present ? viewerFrom(camera) : null;
+      if (viewer && FIXED_VIEW) steerViewer(viewer);
     }
     H.channels = gazeStep(H.gaze, viewer, dt);
-    applyChannels(H.channels);
+    if (FIXED_VIEW && !renderer.xr.isPresenting) {
+      // close-ups: the head takes a third of its usual share and the eyes, still aimed at the
+      // same point, make up the rest, so the motion shows where the camera is looking
+      const c = H.channels, k = CLOSEUP_HEAD;
+      applyChannels({ ...c, head_yaw: (c.head_yaw || 0) * k, head_pitch: (c.head_pitch || 0) * k,
+                      head_roll: (c.head_roll || 0) * k });
+      rideWithHead();
+    } else {
+      applyChannels(H.channels);
+    }
   }
   renderer.render(scene, camera);
 }
@@ -508,10 +607,11 @@ async function main() {
   H.gaze = createGaze({ seed: Math.round(num('seed', 0)), rig: H.rigMaths });
   resize();
   setupLaptopInput();
+  setupControls();
   if (!POSE && !Q.has('noxr')) setupXR();
   status('');
   renderer.setAnimationLoop(frame);
-  window.__xr = { THREE, scene, camera, renderer, bust, H, applyChannels, orbit, placeBust, viewerFrom };
+  window.__xr = { THREE, scene, camera, renderer, bust, H, applyChannels, orbit, placeBust, viewerFrom, ui, setViewName, setFollow };
   document.body.dataset.ready = '1';
 }
 

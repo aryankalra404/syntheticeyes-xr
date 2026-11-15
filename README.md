@@ -34,6 +34,10 @@ It prints two addresses:
   sideways, ±20 up and down), scroll to come closer or step back (0.3 to 1.5 m), take the
   mouse off the page to walk away and bring it back to be seen again. On a phone, drag with
   one finger and pinch with two.
+- **Controls** (top right, at the bottom on a phone): *View* switches between the face, both
+  eyes and an eye close-up (the cameras of the Blender stills; the close-ups ride with the head
+  like a head-mounted eye camera, and the eyes follow the mouse instead of the camera moving).
+  *Follow mouse* off stands the camera in front and the head simply keeps looking at you.
 - **Quest, same Wi-Fi**: `https://<this Mac's address>:8443/xr/`. The certificate is
   self-signed (made with openssl on the first run, kept in `xr/.certs/`, git-ignored, valid
   30 days), so the Quest browser warns once: open *Advanced* and continue. Then tap

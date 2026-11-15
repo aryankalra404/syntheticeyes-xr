@@ -9,13 +9,44 @@
                font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; overflow: hidden; }
   #stage { position: fixed; inset: 0; touch-action: none; }
   #stage.fixed { inset: auto; left: 50%; top: 50%; transform: translate(-50%, -50%); }
-  #hint { position: fixed; left: 16px; top: 14px; max-width: 30em; pointer-events: none; }
-  #hint b { color: #e4e4e8; font-weight: 600; }
-  #credits { position: fixed; left: 16px; right: 16px; bottom: 10px; font-size: 11px;
-             color: #7d7d84; pointer-events: auto; }
-  #credits a { color: inherit; }
-  #status { position: fixed; right: 16px; top: 14px; font-size: 12px; color: #8a8a90; }
-  body.shot #hint, body.shot #credits, body.shot #status, body.shot #XRButton,
+  #title { position: fixed; left: 16px; top: 14px; right: 16px; pointer-events: none;
+           font-size: 15px; letter-spacing: 0.01em; white-space: nowrap; overflow: hidden;
+           text-overflow: ellipsis; }
+  #title b { color: #ededf0; font-weight: 650; font-size: 17px; margin-right: 6px; }
+  #status { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
+            font-size: 12px; color: #8a8a90; pointer-events: none; }
+  #controls { position: fixed; right: 16px; top: 48px; display: flex; flex-direction: column;
+              gap: 6px; width: 150px; }
+  #controls .group { display: flex; flex-direction: column; gap: 4px; padding: 8px;
+                     background: rgba(20, 20, 24, 0.72); border: 1px solid #2a2a30;
+                     border-radius: 10px; backdrop-filter: blur(6px); }
+  #controls .label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em;
+                     color: #75757c; margin: 0 2px 2px; }
+  #controls button { font: inherit; font-size: 12px; color: #c9c9ce; background: transparent;
+                     border: 1px solid transparent; border-radius: 7px; padding: 6px 8px;
+                     text-align: left; cursor: pointer; }
+  #controls button:hover { background: rgba(255, 255, 255, 0.06); }
+  #controls button[aria-pressed="true"] { background: rgba(255, 255, 255, 0.12);
+                                          border-color: #3a3a42; color: #f2f2f4; }
+  #controls .switch { display: flex; justify-content: space-between; align-items: center; }
+  #controls .switch i { font-style: normal; font-size: 11px; color: #8a8a90; }
+  #controls .switch[aria-pressed="true"] i { color: #9fd5a8; }
+  #controls .note { font-size: 11px; color: #75757c; margin: 2px 2px 0; line-height: 1.35; }
+  #headset { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%);
+             padding: 10px 16px; border: 1px solid #3a3a42; border-radius: 6px;
+             background: rgba(20, 20, 24, 0.72); color: #c9c9ce; font-size: 12px;
+             letter-spacing: 0.02em; white-space: nowrap; pointer-events: none; }
+  @media (max-width: 400px) { #title span { display: none; } }
+  @media (max-width: 640px) {
+    #title { font-size: 12px; } #title b { font-size: 15px; margin-right: 4px; }
+    #controls { top: auto; right: 12px; left: 12px; bottom: 66px; width: auto; flex-direction: row;
+                align-items: flex-start; }
+    #controls .group { flex: 1; }
+    #controls .note { display: none; }
+    #headset { bottom: 16px; font-size: 11px; }
+  }
+  body.shot #title, body.shot #controls, body.shot #headset,
+  body.shot #status, body.shot #XRButton,
   body.shot button { display: none !important; }
 </style>
 <script type="importmap">
@@ -29,16 +60,21 @@
 </head>
 <body>
 <div id="stage"></div>
-<div id="hint"><b>SyntheticEyes</b>: a synthetic head that looks at you.
-  Move the mouse to walk round it, scroll to come closer, take the mouse off the page to walk
-  away. In a headset tap <b>START XR</b>; the trigger or a pinch places the bust again.</div>
+<div id="title"><b>SyntheticEyes</b> <span>a synthetic head that looks back at you</span></div>
 <div id="status">loading…</div>
-<div id="credits">
-  Head: Google GNM Head v3 (Apache-2.0). Skin colour and micro-relief from
-  “Infinite, 3D Head Scan by Lee Perry-Smith”, based on a work at www.triplegangers.com
-  (<a href="https://creativecommons.org/licenses/by/3.0/" target="_blank" rel="noopener">CC BY 3.0</a>).
-  Rendering: three.js (MIT). Iris, rig and motion: SyntheticEyes.
+<div id="controls">
+  <div class="group" role="group" aria-label="View">
+    <div class="label">View</div>
+    <button data-view="" aria-pressed="true">Face</button>
+    <button data-view="eyes" aria-pressed="false">Both eyes</button>
+    <button data-view="eye" aria-pressed="false">Eye close-up</button>
+  </div>
+  <div class="group">
+    <button id="follow" class="switch" aria-pressed="true">Follow mouse <i>on</i></button>
+    <div class="note" id="follow-note">Move the mouse to walk round the head, scroll to come closer.</div>
+  </div>
 </div>
+<div id="headset" hidden>Open this link in a VR headset to see it in your room</div>
 <script type="module" src="./js/app.js"></script>
 </body>
 </html>
