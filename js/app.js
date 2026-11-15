@@ -416,34 +416,46 @@ function smoothOrbit(dt) {
   for (const k of ['yaw', 'pitch', 'dist']) orbit.now[k] += (orbit.goal[k] - orbit.now[k]) * a;
 }
 
-// Follow you: the camera stays where the view puts it, like a window, and the head looks at
-// where you really are in front of the screen. Sideways is measured from the laptop camera
-// (assumed centred above the screen), so stepping to the left makes it turn to your left
-// wherever you started; up and down from where you sat when it first saw you (the camera is
-// above the screen, so its own height is not eye level with the face on it). A face on a flat screen that looks straight out seems to look
-// at everyone, so the turn is shown larger than the real angle (x1.8: 10 deg off-centre turns
-// it 18). Leaning in brings its focus closer (vergence, pupils). No face for a second is walking
-// away: it loses you, looks round, and greets you when you are back.
+// Follow you: the camera stays where the view puts it, like a window. A face on a flat screen
+// looks at you only when its eyes point straight out of the screen (the portrait whose eyes
+// follow you round the room); eyes aimed anywhere else, even at where you really stand, read as
+// looking past you. So the eyes stay locked on you through the screen (the gaze target is the
+// camera, with the usual small jumps between your two eyes), and the head turns toward where
+// you really are, the eyes counter-rotating to hold the contact. Sideways is measured from the
+// laptop camera (assumed centred above the screen), so it turns to you wherever you started;
+// up and down from where you sat when it first saw you (the camera is above the screen, so its
+// own height is not eye level with the face). Leaning in brings its focus closer (vergence,
+// pupils). No face for a second is walking away: it loses you, looks round, and greets you when
+// you are back. In this mode it stares: no looks at your mouth, glances away only every 20 to
+// 35 s. In the close-ups the camera rides with the head, so there the eye itself shifts a
+// little toward you instead.
 const face = { follow: null, z0: null, y0: 0, seen: false,
                goal: { yaw: 0, pitch: 0, scale: 1 }, now: { yaw: 0, pitch: 0, scale: 1 } };
-const FACE_GAIN = num('facegain', 1.8);
-const FACE_MAX = { yaw: 40, pitch: 25 };
+const FACE_GAIN = num('facegain', 1.5);          // head turn per degree you are off-centre
+const FACE_MAX = { yaw: 28, pitch: 12 };         // the eyes can counter-rotate this far
+const FACE_TAU = 0.2;                            // s, how quickly the head turns after you
+const STARE = { mouth_share: 0, glance_every: [20, 35], dwell: [1.0, 2.5] };
 
 function faceUpdate(dt) {
   const p = face.follow && face.follow.position();
   if (!p) {
     if (face.seen) orbit.present = false;
+    face.goal.yaw = 0; face.goal.pitch = 0;
   } else {
     const [x, y, z] = p, R2D = 180 / Math.PI, clamp = THREE.MathUtils.clamp;
     if (face.z0 === null) { face.z0 = z; face.y0 = y; }
     face.seen = true;
     orbit.present = true;
     face.goal.yaw = clamp(Math.atan2(x, z) * R2D * FACE_GAIN, -FACE_MAX.yaw, FACE_MAX.yaw);
-    face.goal.pitch = clamp(Math.atan2(y - face.y0, z) * R2D * FACE_GAIN, -FACE_MAX.pitch, FACE_MAX.pitch);
+    face.goal.pitch = clamp(Math.atan2(y - face.y0, z) * R2D, -FACE_MAX.pitch, FACE_MAX.pitch);
     face.goal.scale = clamp(z / face.z0, 0.5, 2);
   }
-  const a = 1 - Math.exp(-dt / ORBIT_TAU);
+  const a = 1 - Math.exp(-dt / FACE_TAU);
   for (const k of ['yaw', 'pitch', 'scale']) face.now[k] += (face.goal[k] - face.now[k]) * a;
+}
+
+function newGaze(live = {}) {
+  H.gaze = createGaze({ seed: Math.round(num('seed', 0)), rig: H.rigMaths, live });
 }
 
 async function setFollowMode(mode) {
@@ -451,6 +463,7 @@ async function setFollowMode(mode) {
   ui.mode = mode;
   if (mode !== 'mouse') { orbit.goal.yaw = 0; orbit.goal.pitch = 0; }
   orbit.present = true;
+  if ((mode === 'you') !== (was === 'you') && H.rigMaths) newGaze(mode === 'you' ? STARE : {});
   if (mode === 'you') {
     face.z0 = null;                              // distance and height reference: the next sighting
     face.seen = false;
@@ -656,7 +669,11 @@ function frame(time) {
       if (FIXED_VIEW) setView(); else placeOrbitCamera();
       camera.updateMatrixWorld(true);
       viewer = orbit.present ? viewerFrom(camera) : null;
-      if (viewer && ui.mode === 'you') steerViewer(viewer, face.now.yaw, face.now.pitch, face.now.scale);
+      if (viewer && ui.mode === 'you') {
+        // eyes on the camera (that is, on you); in the close-ups a little toward where you are
+        const k = FIXED_VIEW ? 0.4 : 0;
+        steerViewer(viewer, face.now.yaw * k, face.now.pitch * k, face.now.scale);
+      }
       else if (viewer && FIXED_VIEW && ui.mode === 'mouse') {
         steerViewer(viewer, orbit.now.yaw / LIMITS.yaw * 35, orbit.now.pitch / LIMITS.pitch * 20);
       }
@@ -671,6 +688,11 @@ function frame(time) {
       applyChannels({ ...c, head_yaw: (c.head_yaw || 0) * k, head_pitch: (c.head_pitch || 0) * k,
                       head_roll: (c.head_roll || 0) * k });
       rideWithHead();
+    } else if (ui.mode === 'you' && !renderer.xr.isPresenting) {
+      // the head turns toward where you are; the eyes, aimed at the same point, counter-rotate
+      const c = H.channels;
+      applyChannels({ ...c, head_yaw: (c.head_yaw || 0) + face.now.yaw,
+                      head_pitch: (c.head_pitch || 0) + face.now.pitch });
     } else {
       applyChannels(H.channels);
     }
@@ -693,7 +715,7 @@ async function main() {
     status('could not load the head: ' + e.message);
     throw e;
   }
-  H.gaze = createGaze({ seed: Math.round(num('seed', 0)), rig: H.rigMaths });
+  newGaze();
   resize();
   setupLaptopInput();
   setupControls();

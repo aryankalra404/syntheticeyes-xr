@@ -39,12 +39,14 @@ It prints two addresses:
   like a head-mounted eye camera, and the eyes follow the mouse instead of the camera moving).
   *Follow*: *Mouse* as above; *You (camera)* uses the laptop or phone camera to find your face
   (MediaPipe face detection, in the browser; the video never leaves the device). The camera
-  then stays put, like a window, and the head looks at where you really are: step to the side
-  and it turns to you, rise or sink and it looks up or down at you, lean in and its focus comes
-  closer, leave the frame and it loses you and greets you when you are back. Sideways is
-  measured from the camera's centre; level is where you sat when it first saw you (pick it
-  again to reset). The turn is shown at 1.8x the real angle (`?facegain=`), because a face on a
-  flat screen that looks straight out seems to look at everyone.
+  stays put, like a window; the **eyes stay locked on you** through the screen (a face on a flat
+  screen looks at you only when its eyes point straight out of it), and the **head turns toward
+  where you really are**, the eyes counter-rotating to hold the stare. Step to the side and it
+  turns after you; rise or sink and it tips up or down; lean in and its focus comes closer;
+  leave the frame and it loses you and greets you when you are back. In this mode it stares: no
+  looks at your mouth, a glance away only every 20 to 35 s. Sideways is measured from the
+  camera's centre; level is where you sat when it first saw you (pick it again to reset). The
+  head turns 1.5x your angle off-centre, at most 28 deg (`?facegain=`).
   *Off* stands the camera in front and the head simply keeps looking at you.
 - **Quest, same Wi-Fi**: `https://<this Mac's address>:8443/xr/`. The certificate is
   self-signed (made with openssl on the first run, kept in `xr/.certs/`, git-ignored, valid
