@@ -75,6 +75,9 @@ It prints two addresses:
   about 35 cm under your eyes) and it looks back at you. Hand tracking must be on in the
   Quest's settings; with controllers in hand it only follows you. Point rather than pinch: a
   pinch places the bust again. `?hands=0` turns this off.
+- On a Quest 3 / 3S the page asks for **depth sensing**, so your real hand or arm hides the
+  head when it is in front of it (the edge is soft and lags a little; that is the headset's
+  depth map). If the browser asks to use spatial data, allow it. `?depth=0` turns it off.
 - It does not track your eyes.
 
 ## Checklist for the first try in the headset

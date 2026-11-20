@@ -16,6 +16,7 @@
 //   seed=0                 the gaze's seed (default 0)
 //   follow=off             start with nothing followed (the controls change it)
 //   hands=0                in the headset, never look at a raised hand (only at the wearer)
+//   depth=0                in the headset, no depth sensing (real hands no longer hide the bust)
 //   prof=1                 time each frame's gaze, rig and render (gl.finish) into window.__prof
 //   yaw, pitch, dist       laptop wearer's start: deg round the head, deg up, metres
 //
@@ -580,8 +581,15 @@ async function setupXR() {
     if (hint) hint.hidden = false;
     return;
   }
-  const button = XRButton.createButton(renderer, { requiredFeatures: ['local-floor'],
-                                                   optionalFeatures: ['hand-tracking'] });
+  // Depth sensing (Quest 3 / 3S): three.js writes the room's measured depth before drawing the
+  // bust, so a real hand or arm in front of the head hides it instead of showing through it.
+  // Optional: without it the session starts as before. ?depth=0 leaves it out.
+  const depth = Q.get('depth') !== '0';
+  const button = XRButton.createButton(renderer, {
+    requiredFeatures: ['local-floor'],
+    optionalFeatures: ['hand-tracking', ...(depth ? ['depth-sensing'] : [])],
+    ...(depth ? { depthSensing: { usagePreference: ['gpu-optimized'], dataFormatPreference: [] } } : {}),
+  });
   document.body.appendChild(button);
   renderer.xr.addEventListener('sessionstart', () => {
     const session = renderer.xr.getSession();
@@ -702,6 +710,9 @@ function frame(time) {
         viewer = viewerFrom(xrCam);
         if (HANDS) lookAtHand(viewer, xrCam, dt);
       }
+      // the depth occluder only writes depth; its shader sets no colour, so keep colour off
+      const occ = renderer.xr.getDepthSensingMesh && renderer.xr.getDepthSensingMesh();
+      if (occ && occ.material.colorWrite) occ.material.colorWrite = false;
     } else {
       if (ui.mode === 'you') faceUpdate(dt);
       smoothOrbit(dt);
