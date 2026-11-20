@@ -70,7 +70,12 @@ It prints two addresses:
   `immersive-vr` on a dark background instead.
 - The bust appears 0.7 m in front of you, its eyes at your eye height, facing you. **Pull the
   trigger or pinch** to place it again in front of you.
-- It tracks your head (the headset), not your eyes or hands.
+- It looks at you (the headset). **Raise a hand** in front of you, fingers open, and it looks
+  at your index fingertip instead: the eyes first, the head a beat later. Lower the hand (below
+  about 35 cm under your eyes) and it looks back at you. Hand tracking must be on in the
+  Quest's settings; with controllers in hand it only follows you. Point rather than pinch: a
+  pinch places the bust again. `?hands=0` turns this off.
+- It does not track your eyes.
 
 ## Checklist for the first try in the headset
 
@@ -87,12 +92,15 @@ Write down what you see; a phone video through the headset's casting is ideal.
 4. **Lose me, greet me.** Walk round behind it (or past 2.5 m): it holds where it lost you
    for 2 s, turns back to the middle and looks round. Come back into view: a quick look at
    you, a blink and a brow raise.
-5. **Clipping?** Up close (30 cm) and from the sides: does any part of the eye show through
+5. **My hand.** Put the controllers down, raise a hand and move it slowly left, right and up:
+   the eyes land on the fingertip, the head follows. Lower it: back to you. Both hands up:
+   the higher one wins, and a followed hand keeps it until it is lowered.
+6. **Clipping?** Up close (30 cm) and from the sides: does any part of the eye show through
    the eyelids, do lashes poke into the eye, is the neck cut visible above the plinth?
-6. **Flicker or shimmer?** Lashes, the lid edges, the tear line, the shadow of the nose.
-7. **Frame rate.** Is it smooth (72 Hz or more), also when you move your head quickly? If it
+7. **Flicker or shimmer?** Lashes, the lid edges, the tear line, the shadow of the nose.
+8. **Frame rate.** Is it smooth (72 Hz or more), also when you move your head quickly? If it
    stutters, say so: the first fixes are a smaller shadow map and the plinth without shadow.
-8. **Looks.** Is it the same man as in the videos? Too pale, too shiny, eyes too dark or too
+9. **Looks.** Is it the same man as in the videos? Too pale, too shiny, eyes too dark or too
    bright in your room's light? (The light is fixed, it does not match the room.)
 
 ## Files
@@ -103,6 +111,7 @@ js/app.js             scene, materials, light, plinth, XR session, laptop wearer
 js/rig.js             port of wrapper/rig.py: channels -> bone rotations and morph weights
 js/gaze.js            real-time gaze: (state, wearer, dt) -> channels; seeded, frame-rate free
 js/facefollow.js      Follow: You: the camera's face detection -> where the viewer's eyes are
+js/handfollow.js      in the headset: which raised hand (index fingertip) to look at, if any
 assets/head.glb       the head, skinned, 21 named shape keys; lash ribbons and tear lines
 assets/rig.json       eye centres, bone heads, rig constants, the gaze engine's numbers
 assets/face_detector.tflite  MediaPipe BlazeFace short range, for Follow: You (camera)

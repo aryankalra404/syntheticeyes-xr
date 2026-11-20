@@ -15,6 +15,7 @@
 //                          squint, pupil
 //   seed=0                 the gaze's seed (default 0)
 //   follow=off             start with nothing followed (the controls change it)
+//   hands=0                in the headset, never look at a raised hand (only at the wearer)
 //   prof=1                 time each frame's gaze, rig and render (gl.finish) into window.__prof
 //   yaw, pitch, dist       laptop wearer's start: deg round the head, deg up, metres
 //
@@ -28,6 +29,7 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { XRButton } from 'three/addons/webxr/XRButton.js';
 import { Rig, bonesLocal } from './rig.js';
 import { createGaze, step as gazeStep } from './gaze.js';
+import { createHandFollow, stepHandFollow } from './handfollow.js';
 import { createFaceFollow } from './facefollow.js';
 
 const Q = new URLSearchParams(location.search);
@@ -634,6 +636,40 @@ function viewerFrom(cam) {
   return { pos: local.toArray(), right: right.toArray(), up: up.toArray() };
 }
 
+// ---- a raised hand, in the headset -----------------------------------------------------------
+// With hand tracking on, a hand raised in front of the wearer becomes what the bust looks at:
+// the gaze treats the index fingertip as it treats the wearer's face (eyes first, the head a beat
+// later, glances away now and then). Lower the hand and it looks back at the wearer.
+
+const HANDS = Q.get('hands') !== '0';
+const handSt = createHandFollow();
+const _hp = new THREE.Vector3(), _tip = new THREE.Vector3();
+
+function fingertips() {
+  const tips = {};
+  const xf = renderer.xr.getFrame(), ref = renderer.xr.getReferenceSpace();
+  const session = renderer.xr.getSession();
+  if (!xf || !ref || !session || !xf.getJointPose) return tips;
+  for (const src of session.inputSources) {
+    if (!src.hand || (src.handedness !== 'left' && src.handedness !== 'right')) continue;
+    const joint = src.hand.get('index-finger-tip');
+    const pose = joint && xf.getJointPose(joint, ref);
+    if (pose) {
+      const p = pose.transform.position;
+      tips[src.handedness] = { x: p.x, y: p.y, z: p.z };
+    }
+  }
+  return tips;
+}
+
+/** Point the viewer at a raised hand if there is one (positions in bust space, like viewerFrom). */
+function lookAtHand(viewer, xrCam, dt) {
+  xrCam.getWorldPosition(_hp);
+  const tip = stepHandFollow(handSt, fingertips(), { x: _hp.x, y: _hp.y, z: _hp.z }, dt);
+  if (tip) viewer.pos = bust.worldToLocal(_tip.set(tip.x, tip.y, tip.z)).toArray();
+  return viewer;
+}
+
 // ---- loop ----------------------------------------------------------------------------------
 
 const POSE = Q.get('pose') === '1';
@@ -662,7 +698,10 @@ function frame(time) {
         placeBust(xrCam);
         xrState.place = false;
       }
-      if (!xrState.place) viewer = viewerFrom(xrCam);
+      if (!xrState.place) {
+        viewer = viewerFrom(xrCam);
+        if (HANDS) lookAtHand(viewer, xrCam, dt);
+      }
     } else {
       if (ui.mode === 'you') faceUpdate(dt);
       smoothOrbit(dt);
